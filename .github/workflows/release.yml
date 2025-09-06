@@ -1,0 +1,247 @@
+name: 🚀 Release Management
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  create-release:
+    name: 📋 Create Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    outputs:
+      tag: ${{ steps.create_tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        id: create_tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+          git push origin ${{ inputs.version }}
+          echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $LAST_TAG..HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --max-count=10)
+          fi
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.version }}
+          release_name: Release ${{ inputs.version }}
+          body: |
+            ## 🏦 Banking Application Release ${{ inputs.version }}
+            
+            ### 📋 Changes
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ### 🚀 Deployment
+            - **Environment**: ${{ inputs.environment }}
+            - **Docker Images**: Available in GitHub Container Registry
+            - **Kubernetes**: Ready for deployment
+            
+            ### 🔍 Verification
+            - [ ] All tests passed
+            - [ ] Security scans completed
+            - [ ] Quality gates passed
+          draft: false
+          prerelease: ${{ contains(inputs.version, 'rc') || contains(inputs.version, 'beta') || contains(inputs.version, 'alpha') }}
+
+  build-release-images:
+    name: 🐳 Build Release Images
+    runs-on: ubuntu-latest
+    needs: create-release
+    if: always() && (github.event_name == 'push' || needs.create-release.result == 'success')
+    strategy:
+      matrix:
+        service: [auth-service, account-service, payment-service, api-gateway, banking-ui]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: 🎭 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-release-images
+    if: contains(github.ref, 'rc') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://banking-staging.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Staging
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG=${{ inputs.version }}
+          fi
+          
+          echo "Deploying $TAG to staging..."
+          
+          helm upgrade --install banking-staging ./helm/banking-app \
+            --namespace banking-staging \
+            --create-namespace \
+            --set global.environment=staging \
+            --set global.imageTag=$TAG \
+            --set ingress.host=banking-staging.example.com \
+            --set ingress.tls=true \
+            --set replicas.auth=2 \
+            --set replicas.account=2 \
+            --set replicas.payment=2 \
+            --set replicas.gateway=2 \
+            --set replicas.ui=2 \
+            --wait --timeout=15m
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against staging..."
+          curl -f https://banking-staging.example.com/health || exit 1
+          curl -f https://banking-staging.example.com/api/auth/health || exit 1
+          curl -f https://banking-staging.example.com/api/accounts/health || exit 1
+          curl -f https://banking-staging.example.com/api/payments/health || exit 1
+
+  deploy-production:
+    name: 🏭 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-release-images, deploy-staging]
+    if: |
+      always() && 
+      !contains(github.ref, 'rc') && 
+      !contains(github.ref, 'beta') && 
+      !contains(github.ref, 'alpha') &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+    environment:
+      name: production
+      url: https://banking.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Production
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG=${{ inputs.version }}
+          fi
+          
+          echo "Deploying $TAG to production..."
+          
+          # Blue-Green deployment
+          helm upgrade --install banking-prod ./helm/banking-app \
+            --namespace banking-prod \
+            --create-namespace \
+            --set global.environment=production \
+            --set global.imageTag=$TAG \
+            --set ingress.host=banking.example.com \
+            --set ingress.tls=true \
+            --set replicas.auth=3 \
+            --set replicas.account=3 \
+            --set replicas.payment=3 \
+            --set replicas.gateway=2 \
+            --set replicas.ui=2 \
+            --set resources.requests.cpu=500m \
+            --set resources.requests.memory=1Gi \
+            --set resources.limits.cpu=2000m \
+            --set resources.limits.memory=2Gi \
+            --wait --timeout=20m
+
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          curl -f https://banking.example.com/health || exit 1
+          curl -f https://banking.example.com/api/auth/health || exit 1
+          curl -f https://banking.example.com/api/accounts/health || exit 1
+          curl -f https://banking.example.com/api/payments/health || exit 1
+
+      - name: Notify deployment success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '') || '${{ inputs.version }}';
+            github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: context.payload.deployment?.id,
+              state: 'success',
+              environment_url: 'https://banking.example.com',
+              description: `Successfully deployed ${tag} to production`
+            });
+
+  rollback:
+    name: 🔄 Rollback
+    runs-on: ubuntu-latest
+    if: failure()
+    environment:
+      name: production
+    steps:
+      - name: Rollback deployment
+        run: |
+          echo "Rolling back production deployment..."
+          helm rollback banking-prod --namespace banking-prod

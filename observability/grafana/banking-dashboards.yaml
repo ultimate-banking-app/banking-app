@@ -1,0 +1,253 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: banking-dashboards
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  banking-business-metrics.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Banking Business Metrics",
+        "tags": ["banking", "business"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Transaction Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(banking:transaction_rate_5m)",
+                "legendFormat": "Transactions/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {"mode": "palette-classic"}
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Transaction Success Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "avg(banking:transaction_success_rate_5m) * 100",
+                "legendFormat": "Success Rate %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100,
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 90},
+                    {"color": "green", "value": 95}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Payment Volume by Type",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum(banking:payment_volume_5m) by (payment_type)",
+                "legendFormat": "{{payment_type}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Account Balances by Type",
+            "type": "bargauge",
+            "targets": [
+              {
+                "expr": "banking:account_balance_total",
+                "legendFormat": "{{account_type}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "currencyUSD"
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+          },
+          {
+            "id": 5,
+            "title": "Login Success Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "banking:login_success_rate_5m * 100",
+                "legendFormat": "Login Success Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 6,
+            "title": "API Error Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "banking:api_error_rate_5m * 100",
+                "legendFormat": "{{kubernetes_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "color": {"mode": "palette-classic"}
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
+  
+  banking-technical-metrics.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Banking Technical Metrics",
+        "tags": ["banking", "technical"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Service Health",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=\"banking-services\"}",
+                "legendFormat": "{{kubernetes_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "HTTP Request Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{job=\"banking-services\"}[5m])) by (kubernetes_name)",
+                "legendFormat": "{{kubernetes_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Response Time (95th percentile)",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"banking-services\"}[5m])) by (le, kubernetes_name))",
+                "legendFormat": "{{kubernetes_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "JVM Memory Usage",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "jvm_memory_used_bytes{job=\"banking-services\", area=\"heap\"} / jvm_memory_max_bytes{job=\"banking-services\", area=\"heap\"} * 100",
+                "legendFormat": "{{kubernetes_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Database Connections",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "hikaricp_connections_active{job=\"banking-services\"}",
+                "legendFormat": "Active - {{kubernetes_name}}"
+              },
+              {
+                "expr": "hikaricp_connections_idle{job=\"banking-services\"}",
+                "legendFormat": "Idle - {{kubernetes_name}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+          },
+          {
+            "id": 6,
+            "title": "Garbage Collection Time",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(jvm_gc_collection_seconds_sum{job=\"banking-services\"}[5m])",
+                "legendFormat": "{{kubernetes_name}} - {{gc}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s"
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }

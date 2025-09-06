@@ -1,0 +1,5 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Withdrawal Service,com.banking.withdrawal.controller,WithdrawalController,77,0,0,0,17,0,3,0,3,0
+Withdrawal Service,com.banking.withdrawal,WithdrawalServiceApplication,8,0,0,0,3,0,2,0,2,0
+Withdrawal Service,com.banking.withdrawal.service,WithdrawalService,0,25,1,1,0,6,1,4,0,4
+Withdrawal Service,com.banking.withdrawal.entity,Withdrawal,41,37,0,0,12,12,12,7,12,7

@@ -1,0 +1,123 @@
+.frontend-build:
+  image: node:18-alpine
+  cache:
+    key: npm-cache
+    paths:
+      - banking-ui/node_modules/
+  before_script:
+    - cd banking-ui
+    - npm ci --prefer-offline --no-audit
+  script:
+    - echo "Building frontend application..."
+    - npm run lint
+    - npm run build
+  artifacts:
+    paths:
+      - banking-ui/dist/
+    expire_in: 1 hour
+
+.frontend-test:
+  image: node:18-alpine
+  cache:
+    key: npm-cache
+    paths:
+      - banking-ui/node_modules/
+    policy: pull
+  before_script:
+    - cd banking-ui
+  script:
+    - echo "Testing frontend application..."
+    - npm run test:unit -- --coverage --watchAll=false
+    - npm run test:e2e:headless || true
+  artifacts:
+    reports:
+      junit:
+        - banking-ui/coverage/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: banking-ui/coverage/cobertura-coverage.xml
+    paths:
+      - banking-ui/coverage/
+    expire_in: 1 week
+
+.sonar-frontend:
+  image: sonarqube/sonar-scanner-cli:latest
+  cache:
+    key: npm-cache
+    paths:
+      - banking-ui/node_modules/
+    policy: pull
+  script:
+    - cd banking-ui
+    - sonar-scanner
+        -Dsonar.projectKey=banking-frontend
+        -Dsonar.sources=src
+        -Dsonar.host.url=$SONAR_HOST_URL
+        -Dsonar.login=$SONAR_TOKEN
+        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        -Dsonar.testExecutionReportPaths=coverage/test-reporter.xml
+  only:
+    variables:
+      - $SONAR_HOST_URL
+      - $SONAR_TOKEN
+
+.package-frontend:
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      cd banking-ui
+      cat > Dockerfile << 'EOF'
+      FROM nginx:alpine
+      COPY dist/ /usr/share/nginx/html/
+      COPY nginx.conf /etc/nginx/nginx.conf
+      EXPOSE 80
+      HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+          CMD curl -f http://localhost/ || exit 1
+      CMD ["nginx", "-g", "daemon off;"]
+      EOF
+      
+      cat > nginx.conf << 'EOF'
+      events {
+          worker_connections 1024;
+      }
+      http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+          sendfile on;
+          keepalive_timeout 65;
+          gzip on;
+          gzip_vary on;
+          gzip_min_length 1024;
+          gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+          
+          server {
+              listen 80;
+              server_name localhost;
+              
+              location / {
+                  root /usr/share/nginx/html;
+                  index index.html index.htm;
+                  try_files $uri $uri/ /index.html;
+              }
+              
+              location /api/ {
+                  proxy_pass http://api-gateway:8090/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+      }
+      EOF
+      
+      docker build -t $CI_REGISTRY_IMAGE/banking-ui:$CI_COMMIT_SHA .
+      docker tag $CI_REGISTRY_IMAGE/banking-ui:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE/banking-ui:latest
+      docker push $CI_REGISTRY_IMAGE/banking-ui:$CI_COMMIT_SHA
+      docker push $CI_REGISTRY_IMAGE/banking-ui:latest

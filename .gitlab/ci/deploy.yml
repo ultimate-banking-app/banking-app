@@ -1,0 +1,129 @@
+.deploy-environment:
+  image: alpine/helm:latest
+  before_script:
+    - apk add --no-cache curl kubectl
+    - echo $KUBE_CONFIG | base64 -d > ~/.kube/config
+    - kubectl config use-context $KUBE_CONTEXT
+  script:
+    - |
+      echo "Deploying to $ENVIRONMENT environment..."
+      
+      # Update Helm values for environment
+      cat > values-$ENVIRONMENT.yaml << EOF
+      global:
+        environment: $ENVIRONMENT
+        imageTag: $CI_COMMIT_SHA
+        registry: $CI_REGISTRY_IMAGE
+      
+      authService:
+        image: $CI_REGISTRY_IMAGE/auth-service:$CI_COMMIT_SHA
+        replicas: $([ "$ENVIRONMENT" = "prod" ] && echo 3 || echo 2)
+      
+      accountService:
+        image: $CI_REGISTRY_IMAGE/account-service:$CI_COMMIT_SHA
+        replicas: $([ "$ENVIRONMENT" = "prod" ] && echo 3 || echo 2)
+      
+      paymentService:
+        image: $CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA
+        replicas: $([ "$ENVIRONMENT" = "prod" ] && echo 3 || echo 2)
+      
+      apiGateway:
+        image: $CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA
+        replicas: $([ "$ENVIRONMENT" = "prod" ] && echo 2 || echo 1)
+      
+      bankingUI:
+        image: $CI_REGISTRY_IMAGE/banking-ui:$CI_COMMIT_SHA
+        replicas: $([ "$ENVIRONMENT" = "prod" ] && echo 2 || echo 1)
+      
+      database:
+        enabled: $([ "$ENVIRONMENT" = "dev" ] && echo true || echo false)
+      
+      ingress:
+        enabled: true
+        host: banking-$ENVIRONMENT.example.com
+        tls: $([ "$ENVIRONMENT" = "prod" ] && echo true || echo false)
+      EOF
+      
+      # Deploy using Helm
+      helm upgrade --install banking-$ENVIRONMENT ./helm/banking-app \
+        --namespace banking-$ENVIRONMENT \
+        --create-namespace \
+        --values values-$ENVIRONMENT.yaml \
+        --wait \
+        --timeout 10m
+      
+      # Verify deployment
+      kubectl get pods -n banking-$ENVIRONMENT
+      kubectl get services -n banking-$ENVIRONMENT
+      kubectl get ingress -n banking-$ENVIRONMENT
+
+deploy-review:
+  extends: .deploy-environment
+  stage: deploy
+  variables:
+    ENVIRONMENT: "review-$CI_MERGE_REQUEST_IID"
+  script:
+    - |
+      echo "Deploying review app for MR $CI_MERGE_REQUEST_IID..."
+      
+      cat > values-review.yaml << EOF
+      global:
+        environment: review
+        imageTag: $CI_COMMIT_SHA
+        registry: $CI_REGISTRY_IMAGE
+      
+      authService:
+        image: $CI_REGISTRY_IMAGE/auth-service:$CI_COMMIT_SHA
+        replicas: 1
+      
+      accountService:
+        image: $CI_REGISTRY_IMAGE/account-service:$CI_COMMIT_SHA
+        replicas: 1
+      
+      paymentService:
+        image: $CI_REGISTRY_IMAGE/payment-service:$CI_COMMIT_SHA
+        replicas: 1
+      
+      apiGateway:
+        image: $CI_REGISTRY_IMAGE/api-gateway:$CI_COMMIT_SHA
+        replicas: 1
+      
+      bankingUI:
+        image: $CI_REGISTRY_IMAGE/banking-ui:$CI_COMMIT_SHA
+        replicas: 1
+      
+      database:
+        enabled: true
+      
+      ingress:
+        enabled: true
+        host: banking-mr-$CI_MERGE_REQUEST_IID.example.com
+      EOF
+      
+      helm upgrade --install banking-review-$CI_MERGE_REQUEST_IID ./helm/banking-app \
+        --namespace banking-review \
+        --create-namespace \
+        --values values-review.yaml \
+        --wait \
+        --timeout 10m
+  environment:
+    name: review/$CI_MERGE_REQUEST_IID
+    url: https://banking-mr-$CI_MERGE_REQUEST_IID.example.com
+    on_stop: stop-review
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+stop-review:
+  extends: .deploy-environment
+  stage: deploy
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - helm uninstall banking-review-$CI_MERGE_REQUEST_IID --namespace banking-review
+  environment:
+    name: review/$CI_MERGE_REQUEST_IID
+    action: stop
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+  allow_failure: true

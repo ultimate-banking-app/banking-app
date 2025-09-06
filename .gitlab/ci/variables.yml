@@ -1,0 +1,38 @@
+variables:
+  # Maven Configuration
+  MAVEN_OPTS: "-Xmx2g -XX:+UseG1GC -Dmaven.artifact.threads=10"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  MAVEN_USER_HOME: "$CI_PROJECT_DIR/.m2"
+  
+  # Docker Configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_BUILDKIT: 1
+  DOCKER_TLS_CERTDIR: "/certs"
+  
+  # Node.js Configuration
+  NODE_VERSION: "18"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  
+  # Application Configuration
+  SPRING_PROFILES_ACTIVE: "ci"
+  
+  # Database Configuration (for tests)
+  POSTGRES_DB: "banking_test"
+  POSTGRES_USER: "banking_user"
+  POSTGRES_PASSWORD: "banking_pass"
+  
+  # Security Configuration
+  SAST_EXCLUDED_PATHS: "spec,test,tests,tmp,node_modules,target"
+  DEPENDENCY_SCANNING_DISABLED: "false"
+  SECRET_DETECTION_DISABLED: "false"
+  
+  # Deployment Configuration
+  KUBE_NAMESPACE: "banking-$CI_ENVIRONMENT_NAME"
+  HELM_CHART_PATH: "./helm/banking-app"
+  
+  # Feature Flags
+  FF_USE_FASTZIP: "true"
+  FF_GITLAB_REGISTRY_HELPER_IMAGE: "true"
+  
+  # Cache Configuration
+  CACHE_COMPRESSION_LEVEL: "fastest"

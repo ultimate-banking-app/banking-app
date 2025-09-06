@@ -5,93 +5,114 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_DB: banking_db
-      POSTGRES_USER: banking_user
-      POSTGRES_PASSWORD: banking_pass
+      POSTGRES_DB: banking
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking123
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Redis for caching
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  # API Gateway
-  api-gateway:
-    build: ./api-gateway
-    ports:
-      - "8080:8080"
-    depends_on:
-      - auth-service
-      - account-service
-
-  # Auth Service
+  # Banking Services
   auth-service:
     build: ./auth-service
     ports:
       - "8081:8081"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/banking_db
-      - SPRING_DATASOURCE_USERNAME=banking_user
-      - SPRING_DATASOURCE_PASSWORD=banking_pass
     depends_on:
       - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
 
-  # Account Service
   account-service:
     build: ./account-service
     ports:
-      - "8082:8082"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/banking_db
-      - SPRING_DATASOURCE_USERNAME=banking_user
-      - SPRING_DATASOURCE_PASSWORD=banking_pass
+      - "8084:8084"
     depends_on:
       - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
 
-  # Payment Service
-  payment-service:
-    build: ./payment-service
+  audit-service:
+    build: ./audit-service
     ports:
-      - "8083:8083"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/banking_db
-      - SPRING_DATASOURCE_USERNAME=banking_user
-      - SPRING_DATASOURCE_PASSWORD=banking_pass
+      - "8085:8085"
     depends_on:
       - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
 
-  # Balance Service
   balance-service:
     build: ./balance-service
     ports:
-      - "8084:8084"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/banking_db
-      - SPRING_DATASOURCE_USERNAME=banking_user
-      - SPRING_DATASOURCE_PASSWORD=banking_pass
+      - "8086:8086"
     depends_on:
       - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
 
-  # Transfer Service
+  deposit-service:
+    build: ./deposit-service
+    ports:
+      - "8087:8087"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8088:8088"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
   transfer-service:
     build: ./transfer-service
     ports:
-      - "8085:8085"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/banking_db
-      - SPRING_DATASOURCE_USERNAME=banking_user
-      - SPRING_DATASOURCE_PASSWORD=banking_pass
+      - "8089:8089"
     depends_on:
       - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+  withdrawal-service:
+    build: ./withdrawal-service
+    ports:
+      - "8091:8091"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8090:8090"
+    depends_on:
+      - auth-service
+      - account-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
 
 volumes:
   postgres_data:
+  grafana_data:

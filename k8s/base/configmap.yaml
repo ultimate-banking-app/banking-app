@@ -1,0 +1,175 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  labels:
+    app: banking-app
+data:
+  01-init-db.sql: |
+    -- Create users table
+    CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'CUSTOMER',
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Create accounts table
+    CREATE TABLE IF NOT EXISTS accounts (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50) NOT NULL,
+        account_number VARCHAR(20) UNIQUE NOT NULL,
+        account_type VARCHAR(50) NOT NULL,
+        balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    
+    -- Create transactions table
+    CREATE TABLE IF NOT EXISTS transactions (
+        id VARCHAR(50) PRIMARY KEY,
+        account_id VARCHAR(50) NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        description TEXT,
+        balance DECIMAL(15,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (account_id) REFERENCES accounts(id)
+    );
+    
+    -- Create payments table
+    CREATE TABLE IF NOT EXISTS payments (
+        id VARCHAR(50) PRIMARY KEY,
+        from_account VARCHAR(50) NOT NULL,
+        to_account VARCHAR(50) NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        type VARCHAR(50) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_account) REFERENCES accounts(id),
+        FOREIGN KEY (to_account) REFERENCES accounts(id)
+    );
+    
+    -- Create audit_logs table
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50),
+        action VARCHAR(100) NOT NULL,
+        resource VARCHAR(100),
+        details TEXT,
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'SUCCESS',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Create balance_history table
+    CREATE TABLE IF NOT EXISTS balance_history (
+        id VARCHAR(50) PRIMARY KEY,
+        account_id VARCHAR(50) NOT NULL,
+        previous_balance DECIMAL(15,2) NOT NULL,
+        new_balance DECIMAL(15,2) NOT NULL,
+        change_amount DECIMAL(15,2) NOT NULL,
+        change_type VARCHAR(50) NOT NULL,
+        reference_id VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (account_id) REFERENCES accounts(id)
+    );
+    
+    -- Create deposits table
+    CREATE TABLE IF NOT EXISTS deposits (
+        id VARCHAR(50) PRIMARY KEY,
+        account_id VARCHAR(50) NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        deposit_method VARCHAR(50) NOT NULL DEFAULT 'WEB',
+        reference_number VARCHAR(100),
+        status VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (account_id) REFERENCES accounts(id)
+    );
+    
+    -- Create withdrawals table
+    CREATE TABLE IF NOT EXISTS withdrawals (
+        id VARCHAR(50) PRIMARY KEY,
+        account_id VARCHAR(50) NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        withdrawal_method VARCHAR(50) NOT NULL DEFAULT 'WEB',
+        reference_number VARCHAR(100),
+        status VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (account_id) REFERENCES accounts(id)
+    );
+    
+    -- Create transfers table
+    CREATE TABLE IF NOT EXISTS transfers (
+        id VARCHAR(50) PRIMARY KEY,
+        from_account VARCHAR(50) NOT NULL,
+        to_account VARCHAR(50) NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+        transfer_type VARCHAR(50) NOT NULL DEFAULT 'INTERNAL',
+        reference_number VARCHAR(100),
+        status VARCHAR(50) NOT NULL DEFAULT 'COMPLETED',
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_account) REFERENCES accounts(id),
+        FOREIGN KEY (to_account) REFERENCES accounts(id)
+    );
+    
+    -- Create notifications table
+    CREATE TABLE IF NOT EXISTS notifications (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        message TEXT NOT NULL,
+        channel VARCHAR(50) NOT NULL DEFAULT 'EMAIL',
+        status VARCHAR(50) NOT NULL DEFAULT 'SENT',
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    
+    -- Insert sample data
+    INSERT INTO users (id, username, password, first_name, last_name, email, role) VALUES
+    ('user1', 'john.doe', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iYqiSfFVMLVZqpjBdtND9TgJKoWK', 'John', 'Doe', 'john.doe@example.com', 'CUSTOMER'),
+    ('user2', 'jane.smith', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iYqiSfFVMLVZqpjBdtND9TgJKoWK', 'Jane', 'Smith', 'jane.smith@example.com', 'CUSTOMER'),
+    ('user3', 'bob.wilson', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iYqiSfFVMLVZqpjBdtND9TgJKoWK', 'Bob', 'Wilson', 'bob.wilson@example.com', 'CUSTOMER'),
+    ('admin', 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iYqiSfFVMLVZqpjBdtND9TgJKoWK', 'Admin', 'User', 'admin@example.com', 'ADMIN')
+    ON CONFLICT (id) DO NOTHING;
+    
+    INSERT INTO accounts (id, user_id, account_number, account_type, balance) VALUES
+    ('acc-001', 'user1', '1234567890', 'CHECKING', 1500.00),
+    ('acc-002', 'user1', '1234567891', 'SAVINGS', 5000.00),
+    ('acc-003', 'user2', '2345678901', 'CHECKING', 2500.00),
+    ('acc-004', 'user2', '2345678902', 'SAVINGS', 10000.00),
+    ('acc-005', 'user3', '3456789012', 'CHECKING', 750.00),
+    ('acc-006', 'user3', '3456789013', 'SAVINGS', 3000.00)
+    ON CONFLICT (id) DO NOTHING;
+    
+    -- Insert sample transactions
+    INSERT INTO transactions (id, account_id, amount, type, description, balance) VALUES
+    ('txn-001', 'acc-001', 100.00, 'DEPOSIT', 'Initial deposit', 1500.00),
+    ('txn-002', 'acc-002', 500.00, 'DEPOSIT', 'Salary deposit', 5000.00),
+    ('txn-003', 'acc-003', -250.00, 'WITHDRAWAL', 'ATM withdrawal', 2500.00),
+    ('txn-004', 'acc-004', 1000.00, 'TRANSFER', 'Transfer to checking', 10000.00)
+    ON CONFLICT (id) DO NOTHING;

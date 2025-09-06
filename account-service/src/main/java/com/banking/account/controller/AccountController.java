@@ -1,7 +1,7 @@
 package com.banking.account.controller;
 
-import com.banking.shared.entity.Account;
-import com.banking.shared.enums.AccountType;
+import com.banking.account.entity.Account;
+import com.banking.account.entity.Transaction;
 import com.banking.account.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -11,23 +11,22 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/accounts")
+@CrossOrigin(origins = "*")
 public class AccountController {
 
     @Autowired
     private AccountService accountService;
 
-    @PostMapping("/create")
-    public ResponseEntity<Account> createAccount(@RequestParam String userId, 
-                                               @RequestParam AccountType accountType,
-                                               @RequestParam(defaultValue = "USD") String currency) {
-        Account account = accountService.createAccount(userId, accountType, currency);
-        return ResponseEntity.ok(account);
+    @GetMapping
+    public ResponseEntity<List<Account>> getAllAccounts() {
+        List<Account> accounts = accountService.getAllAccounts();
+        return ResponseEntity.ok(accounts);
     }
 
-    @GetMapping("/{accountId}")
-    public ResponseEntity<Account> getAccount(@PathVariable String accountId) {
-        Account account = accountService.getAccountById(accountId);
-        return account != null ? ResponseEntity.ok(account) : ResponseEntity.notFound().build();
+    @GetMapping("/{id}")
+    public ResponseEntity<Account> getAccount(@PathVariable String id) {
+        Account account = accountService.getAccountById(id);
+        return ResponseEntity.ok(account);
     }
 
     @GetMapping("/user/{userId}")
@@ -36,10 +35,21 @@ public class AccountController {
         return ResponseEntity.ok(accounts);
     }
 
-    @PatchMapping("/{accountId}/status")
-    public ResponseEntity<Account> updateAccountStatus(@PathVariable String accountId, 
-                                                     @RequestParam String status) {
-        Account account = accountService.updateAccountStatus(accountId, status);
-        return account != null ? ResponseEntity.ok(account) : ResponseEntity.notFound().build();
+    @GetMapping("/transactions")
+    public ResponseEntity<List<Transaction>> getAllTransactions() {
+        List<Transaction> transactions = accountService.getAllTransactions();
+        return ResponseEntity.ok(transactions);
+    }
+
+    @GetMapping("/{accountId}/transactions")
+    public ResponseEntity<List<Transaction>> getTransactionsByAccountId(@PathVariable String accountId) {
+        List<Transaction> transactions = accountService.getTransactionsByAccountId(accountId);
+        return ResponseEntity.ok(transactions);
+    }
+
+    @PostMapping
+    public ResponseEntity<Account> createAccount(@RequestBody Account account) {
+        Account created = accountService.createAccount(account);
+        return ResponseEntity.ok(created);
     }
 }

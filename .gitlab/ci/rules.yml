@@ -1,0 +1,42 @@
+.rules:
+  merge-request:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  
+  main-branch:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  
+  tag:
+    - if: $CI_COMMIT_TAG
+  
+  backend-changes:
+    - changes:
+        - auth-service/**/*
+        - account-service/**/*
+        - payment-service/**/*
+        - api-gateway/**/*
+        - shared/**/*
+        - pom.xml
+  
+  frontend-changes:
+    - changes:
+        - banking-ui/**/*
+  
+  auth-changes:
+    - changes:
+        - auth-service/**/*
+        - shared/**/*
+  
+  account-changes:
+    - changes:
+        - account-service/**/*
+        - shared/**/*
+  
+  payment-changes:
+    - changes:
+        - payment-service/**/*
+        - shared/**/*
+  
+  gateway-changes:
+    - changes:
+        - api-gateway/**/*
+        - shared/**/*

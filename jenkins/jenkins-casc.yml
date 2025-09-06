@@ -1,0 +1,213 @@
+jenkins:
+  systemMessage: "Banking Application CI/CD Jenkins Instance"
+  numExecutors: 4
+  mode: NORMAL
+  
+  globalLibraries:
+    libraries:
+      - name: "banking-shared-library"
+        retriever:
+          modernSCM:
+            scm:
+              git:
+                remote: "https://github.com/your-org/banking-jenkins-shared-library.git"
+                credentialsId: "github-credentials"
+        defaultVersion: "main"
+        implicit: true
+        allowVersionOverride: true
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin123"
+          properties:
+            - "hudson.model.MyViewsProperty"
+            - "hudson.security.HudsonPrivateSecurityRealm$Details"
+
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+        - "Overall/Read:authenticated"
+        - "Job/Build:authenticated"
+        - "Job/Read:authenticated"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "github-credentials"
+              username: "your-github-username"
+              password: "your-github-token"
+              description: "GitHub Access Token"
+          - string:
+              scope: GLOBAL
+              id: "sonar-token"
+              secret: "your-sonar-token"
+              description: "SonarQube Token"
+          - string:
+              scope: GLOBAL
+              id: "nexus-credentials"
+              secret: "your-nexus-password"
+              description: "Nexus Repository Password"
+          - amazonWebServicesCredentials:
+              scope: GLOBAL
+              id: "aws-credentials"
+              accessKey: "your-aws-access-key"
+              secretKey: "your-aws-secret-key"
+              description: "AWS ECR Credentials"
+
+tool:
+  maven:
+    installations:
+      - name: "Maven-3.9"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.6"
+  
+  jdk:
+    installations:
+      - name: "OpenJDK-17"
+        properties:
+          - installSource:
+              installers:
+                - adoptOpenJdkInstaller:
+                    id: "jdk-17.0.2+8"
+
+  dockerTool:
+    installations:
+      - name: "Docker"
+        properties:
+          - installSource:
+              installers:
+                - dockerInstaller:
+                    version: "latest"
+
+  nodejs:
+    installations:
+      - name: "NodeJS-18"
+        properties:
+          - installSource:
+              installers:
+                - nodeJSInstaller:
+                    id: "18.19.0"
+
+jobs:
+  - script: |
+      multibranchPipelineJob('banking-application') {
+        displayName('Banking Application Monorepo')
+        description('CI/CD Pipeline for Banking Application Microservices')
+        
+        branchSources {
+          git {
+            id('banking-app-repo')
+            remote('https://github.com/your-org/banking-application.git')
+            credentialsId('github-credentials')
+            includes('main develop feature/* release/* hotfix/*')
+          }
+        }
+        
+        configure { node ->
+          def traits = node / 'sources' / 'data' / 'jenkins.branch.BranchSource' / 'source' / 'traits'
+          traits << 'jenkins.plugins.git.traits.BranchDiscoveryTrait' {
+            strategyId(1)
+          }
+          traits << 'jenkins.plugins.git.traits.OriginPullRequestDiscoveryTrait' {
+            strategyId(1)
+          }
+        }
+        
+        factory {
+          workflowBranchProjectFactory {
+            scriptPath('Jenkinsfile')
+          }
+        }
+        
+        orphanedItemStrategy {
+          discardOldItems {
+            daysToKeep(7)
+            numToKeep(10)
+          }
+        }
+        
+        triggers {
+          periodicFolderTrigger {
+            interval('5m')
+          }
+        }
+      }
+
+unclassified:
+  sonarGlobalConfiguration:
+    installations:
+      - name: "SonarQube"
+        serverUrl: "http://sonarqube:9000"
+        credentialsId: "sonar-token"
+  
+  slackNotifier:
+    teamDomain: "your-team"
+    token: "your-slack-token"
+    room: "#banking-deployments"
+  
+  mailer:
+    smtpHost: "smtp.company.com"
+    smtpPort: 587
+    charset: "UTF-8"
+    useSsl: true
+    authentication:
+      username: "jenkins@company.com"
+      password: "email-password"
+  
+  nexus:
+    servers:
+      - id: "nexus-server"
+        serverUrl: "http://nexus:8081"
+        credentialsId: "nexus-credentials"
+  
+  aws:
+    region: "us-east-1"
+    credentialsId: "aws-credentials"
+  
+  globalConfigFiles:
+    configs:
+      - mavenSettings:
+          id: "maven-settings"
+          name: "Maven Settings with Nexus"
+          comment: "Maven settings for Nexus repository"
+          content: |
+            <?xml version="1.0" encoding="UTF-8"?>
+            <settings>
+              <servers>
+                <server>
+                  <id>nexus</id>
+                  <username>admin</username>
+                  <password>${NEXUS_PASSWORD}</password>
+                </server>
+              </servers>
+              <mirrors>
+                <mirror>
+                  <id>nexus</id>
+                  <mirrorOf>*</mirrorOf>
+                  <url>http://nexus:8081/repository/maven-public/</url>
+                </mirror>
+              </mirrors>
+            </settings>
+      
+      - custom:
+          id: "sonar-quality-gate"
+          name: "SonarQube Quality Gate Config"
+          comment: "Quality gate configuration for SonarQube"
+          content: |
+            sonar.qualitygate.wait=true
+            sonar.qualitygate.timeout=300
+            sonar.coverage.minimum=80
+            sonar.duplicated_lines_density.maximum=3
+            sonar.maintainability_rating.maximum=A
+            sonar.reliability_rating.maximum=A
+            sonar.security_rating.maximum=A

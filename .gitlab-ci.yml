@@ -1,0 +1,210 @@
+stages:
+  - validate
+  - build
+  - test
+  - quality
+  - security
+  - package
+  - deploy
+
+variables:
+  MAVEN_OPTS: "-Xmx2g -XX:+UseG1GC -Dmaven.artifact.threads=10"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  DOCKER_DRIVER: overlay2
+  DOCKER_BUILDKIT: 1
+  NODE_VERSION: "18"
+
+include:
+  - local: '.gitlab/ci/rules.yml'
+  - local: '.gitlab/ci/backend.yml'
+  - local: '.gitlab/ci/frontend.yml'
+  - local: '.gitlab/ci/security.yml'
+  - local: '.gitlab/ci/deploy.yml'
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# Change Detection
+detect-changes:
+  stage: validate
+  image: alpine/git:latest
+  script:
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        CHANGED_FILES=$(git diff --name-only $CI_MERGE_REQUEST_TARGET_BRANCH_SHA...$CI_COMMIT_SHA)
+      else
+        CHANGED_FILES=$(git diff --name-only HEAD~1..HEAD)
+      fi
+      
+      echo "Changed files:"
+      echo "$CHANGED_FILES"
+      
+      # Detect backend changes
+      BACKEND_CHANGED="false"
+      UI_CHANGED="false"
+      
+      for file in $CHANGED_FILES; do
+        case $file in
+          auth-service/*|account-service/*|payment-service/*|api-gateway/*|shared/*|pom.xml)
+            BACKEND_CHANGED="true"
+            ;;
+          banking-ui/*)
+            UI_CHANGED="true"
+            ;;
+        esac
+      done
+      
+      echo "BACKEND_CHANGED=$BACKEND_CHANGED" > changes.env
+      echo "UI_CHANGED=$UI_CHANGED" >> changes.env
+      
+      # Detect specific services
+      echo "AUTH_CHANGED=$(echo "$CHANGED_FILES" | grep -q "auth-service/" && echo "true" || echo "false")" >> changes.env
+      echo "ACCOUNT_CHANGED=$(echo "$CHANGED_FILES" | grep -q "account-service/" && echo "true" || echo "false")" >> changes.env
+      echo "PAYMENT_CHANGED=$(echo "$CHANGED_FILES" | grep -q "payment-service/" && echo "true" || echo "false")" >> changes.env
+      echo "GATEWAY_CHANGED=$(echo "$CHANGED_FILES" | grep -q "api-gateway/" && echo "true" || echo "false")" >> changes.env
+  artifacts:
+    reports:
+      dotenv: changes.env
+    expire_in: 1 hour
+
+# Parallel Build Jobs
+build-backend:
+  stage: build
+  extends: .backend-build
+  rules:
+    - if: $BACKEND_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+build-frontend:
+  stage: build
+  extends: .frontend-build
+  rules:
+    - if: $UI_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Test Jobs
+test-auth-service:
+  stage: test
+  extends: .service-test
+  variables:
+    SERVICE_NAME: "auth-service"
+  rules:
+    - if: $AUTH_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-account-service:
+  stage: test
+  extends: .service-test
+  variables:
+    SERVICE_NAME: "account-service"
+  rules:
+    - if: $ACCOUNT_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-payment-service:
+  stage: test
+  extends: .service-test
+  variables:
+    SERVICE_NAME: "payment-service"
+  rules:
+    - if: $PAYMENT_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-api-gateway:
+  stage: test
+  extends: .service-test
+  variables:
+    SERVICE_NAME: "api-gateway"
+  rules:
+    - if: $GATEWAY_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+test-frontend:
+  stage: test
+  extends: .frontend-test
+  rules:
+    - if: $UI_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Quality Gates
+sonarqube-backend:
+  stage: quality
+  extends: .sonar-backend
+  rules:
+    - if: $BACKEND_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+sonarqube-frontend:
+  stage: quality
+  extends: .sonar-frontend
+  rules:
+    - if: $UI_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Security Scans
+security-backend:
+  stage: security
+  extends: .security-backend
+  rules:
+    - if: $BACKEND_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+security-frontend:
+  stage: security
+  extends: .security-frontend
+  rules:
+    - if: $UI_CHANGED == "true"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Package & Deploy
+package-services:
+  stage: package
+  extends: .package-backend
+  rules:
+    - if: $BACKEND_CHANGED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+package-frontend:
+  stage: package
+  extends: .package-frontend
+  rules:
+    - if: $UI_CHANGED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+deploy-dev:
+  stage: deploy
+  extends: .deploy-environment
+  variables:
+    ENVIRONMENT: "dev"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  environment:
+    name: development
+    url: https://banking-dev.example.com
+
+deploy-staging:
+  stage: deploy
+  extends: .deploy-environment
+  variables:
+    ENVIRONMENT: "staging"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+-rc\d+$/
+  environment:
+    name: staging
+    url: https://banking-staging.example.com
+  when: manual
+
+deploy-prod:
+  stage: deploy
+  extends: .deploy-environment
+  variables:
+    ENVIRONMENT: "prod"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+  environment:
+    name: production
+    url: https://banking.example.com
+  when: manual

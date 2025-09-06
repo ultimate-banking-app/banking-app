@@ -1,39 +1,50 @@
 package com.banking.deposit.controller;
 
+import com.banking.deposit.entity.Deposit;
+import com.banking.deposit.service.DepositService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/deposits")
+@CrossOrigin(origins = "*")
 public class DepositController {
 
-    @PostMapping("/cash")
-    public Map<String, Object> cashDeposit(@RequestParam String accountId,
-                                         @RequestParam BigDecimal amount,
-                                         @RequestParam String location) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("depositId", "DEP" + System.currentTimeMillis());
-        response.put("status", "COMPLETED");
-        response.put("type", "CASH");
-        response.put("amount", amount);
-        response.put("accountId", accountId);
-        response.put("location", location);
-        return response;
+    @Autowired
+    private DepositService depositService;
+    
+    private final Counter depositRequestsCounter;
+
+    public DepositController(MeterRegistry meterRegistry) {
+        this.depositRequestsCounter = Counter.builder("banking_deposit_requests_total")
+            .description("Total deposit requests")
+            .tag("service", "deposit")
+            .register(meterRegistry);
     }
 
-    @PostMapping("/check")
-    public Map<String, Object> checkDeposit(@RequestParam String accountId,
-                                          @RequestParam BigDecimal amount,
-                                          @RequestParam String checkNumber) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("depositId", "CHK" + System.currentTimeMillis());
-        response.put("status", "PENDING");
-        response.put("type", "CHECK");
-        response.put("amount", amount);
-        response.put("accountId", accountId);
-        response.put("holdDays", "2-3");
-        return response;
+    @PostMapping
+    public ResponseEntity<Deposit> createDeposit(@RequestBody Deposit deposit) {
+        depositRequestsCounter.increment();
+        Deposit created = depositService.createDeposit(deposit);
+        return ResponseEntity.ok(created);
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Deposit>> getDeposits(@RequestParam(required = false) String accountId) {
+        depositRequestsCounter.increment();
+        List<Deposit> deposits = depositService.getDeposits(accountId);
+        return ResponseEntity.ok(deposits);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Deposit> getDeposit(@PathVariable String id) {
+        depositRequestsCounter.increment();
+        Deposit deposit = depositService.getDeposit(id);
+        return ResponseEntity.ok(deposit);
     }
 }

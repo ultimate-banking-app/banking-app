@@ -1,0 +1,201 @@
+apiVersion: karpenter.sh/v1beta1
+kind: NodePool
+metadata:
+  name: banking-general
+spec:
+  # Template section that describes the nodes that Karpenter will create
+  template:
+    metadata:
+      # Labels that Karpenter will apply to all nodes
+      labels:
+        karpenter.sh/nodepool: banking-general
+        node-type: general
+    spec:
+      # References the EC2NodeClass resource, see EC2NodeClass section below
+      nodeClassRef:
+        apiVersion: karpenter.k8s.aws/v1beta1
+        kind: EC2NodeClass
+        name: banking-nodeclass
+      
+      # Provisioned nodes will have these taints
+      # Taints can be used to prevent pods from scheduling onto nodes
+      taints:
+        - key: banking.com/general
+          value: "true"
+          effect: NoSchedule
+
+      # Provisioned nodes will have these taints, but pods do not need to tolerate these taints to be provisioned by this
+      # NodePool. These taints are expected to be temporary and some other entity (e.g. a DaemonSet) is responsible for
+      # removing the taint after it has finished initializing the node.
+      startupTaints:
+        - key: banking.com/startup
+          value: "true"
+          effect: NoSchedule
+
+      # Requirements that constrain the parameters of provisioned nodes.
+      # These requirements are combined with pod resource requests to determine the optimal instance type to launch.
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["t3.medium", "t3.large", "t3.xlarge", "m5.large", "m5.xlarge", "c5.large", "c5.xlarge"]
+
+  # Disruption section which describes the ways in which Karpenter can disrupt and replace Nodes
+  # Configuration in this section constrains how aggressive Karpenter can be with performing operations
+  # like rolling Nodes due to them hitting their maximum lifetime (expiry) or scaling down nodes to reduce cluster cost
+  disruption:
+    # Describes which types of Nodes Karpenter should consider for consolidation
+    # If using 'WhenUnderutilized', Karpenter will consider all nodes for consolidation and attempt to remove or replace Nodes when it discovers that the Node is underutilized and could be changed to reduce cost
+    # If using 'WhenEmpty', Karpenter will only consider nodes for consolidation that contain no workload pods
+    consolidationPolicy: WhenUnderutilized
+
+    # The amount of time Karpenter should wait after discovering a consolidation decision
+    # This value can currently only be set when the consolidationPolicy is 'WhenEmpty'
+    # You can choose to disable consolidation entirely by setting the string value 'Never' here
+    consolidateAfter: 30s
+
+    # The amount of time a Node can live on the cluster before being removed
+    # Avoiding long-running Nodes helps to reduce security vulnerabilities as well as to reduce the chance of issues that can plague Nodes with long uptimes such as file fragmentation and memory leaks from system processes
+    # You can choose to disable expiration entirely by setting the string value 'Never' here
+    expireAfter: 30m
+
+  # Resource limits constrain the total size of the cluster.
+  # Limits prevent Karpenter from creating new instances once the limit is exceeded.
+  limits:
+    cpu: 1000
+    memory: 1000Gi
+
+---
+apiVersion: karpenter.k8s.aws/v1beta1
+kind: EC2NodeClass
+metadata:
+  name: banking-nodeclass
+spec:
+  # AMI to use for your nodes. If not specified, Karpenter will use the latest EKS optimized AMI for your cluster's Kubernetes version
+  amiFamily: AL2
+
+  # SubnetSelectorTerms: Karpenter discovers subnets by selecting and filtering Subnets by tags.
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "banking-cluster"
+
+  # SecurityGroupSelectorTerms: Karpenter discovers security groups by selecting and filtering security groups by tags.
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "banking-cluster"
+
+  # Optional, IAM role to use for the node identity.
+  # The "role" field is immutable after EC2NodeClass creation. This may change in the
+  # future, but this restriction is currently in place today to ensure that Karpenter
+  # avoids leaking managed instance profiles in your account.
+  role: "KarpenterNodeInstanceProfile-banking-cluster"
+
+  # Optional, configures IMDS for the instance
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 2
+    httpTokens: required
+
+  # Optional, configures storage device block mappings
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 20Gi
+        volumeType: gp3
+        iops: 3000
+        deleteOnTermination: true
+
+  # Optional, configures detailed monitoring for the instance
+  detailedMonitoring: true
+
+  # Optional, configures custom user data that is applied to the provisioned nodes.
+  # This allows you to run custom scripts or install custom tooling on your nodes.
+  # For more information, refer to the Custom User Data documentation in the Karpenter docs.
+  # Note: This script should be compatible with the AMI family you have specified.
+  userData: |
+    #!/bin/bash
+    /etc/eks/bootstrap.sh banking-cluster
+    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    sysctl -p /etc/sysctl.conf
+
+---
+apiVersion: karpenter.sh/v1beta1
+kind: NodePool
+metadata:
+  name: banking-compute-optimized
+spec:
+  template:
+    metadata:
+      labels:
+        karpenter.sh/nodepool: banking-compute-optimized
+        node-type: compute-optimized
+    spec:
+      nodeClassRef:
+        apiVersion: karpenter.k8s.aws/v1beta1
+        kind: EC2NodeClass
+        name: banking-compute-nodeclass
+      
+      taints:
+        - key: banking.com/compute-optimized
+          value: "true"
+          effect: NoSchedule
+
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: ["c5.large", "c5.xlarge", "c5.2xlarge", "c5.4xlarge"]
+
+  disruption:
+    consolidationPolicy: WhenUnderutilized
+    consolidateAfter: 15s
+    expireAfter: 10m
+
+  limits:
+    cpu: 500
+    memory: 500Gi
+
+---
+apiVersion: karpenter.k8s.aws/v1beta1
+kind: EC2NodeClass
+metadata:
+  name: banking-compute-nodeclass
+spec:
+  amiFamily: AL2
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "banking-cluster"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "banking-cluster"
+  role: "KarpenterNodeInstanceProfile-banking-cluster"
+  
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 30Gi
+        volumeType: gp3
+        iops: 4000
+        deleteOnTermination: true
+
+  userData: |
+    #!/bin/bash
+    /etc/eks/bootstrap.sh banking-cluster
+    echo "Banking compute-optimized node ready"

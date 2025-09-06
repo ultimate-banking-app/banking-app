@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- repository.yaml
+- rbac.yaml
+- projects/banking-project.yaml
+- applications/banking-dev.yaml
+- applications/banking-prod.yaml
+- applications/observability.yaml
+- applications/banking-appset.yaml
+
+commonLabels:
+  managed-by: argocd

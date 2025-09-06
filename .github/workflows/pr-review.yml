@@ -1,0 +1,94 @@
+name: 🔍 PR Review Environment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [closed]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-review:
+    name: 🚀 Deploy Review App
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    environment:
+      name: review-pr-${{ github.event.number }}
+      url: https://banking-pr-${{ github.event.number }}.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment variables
+        run: |
+          echo "PR_NUMBER=${{ github.event.number }}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${GITHUB_HEAD_REF}" >> $GITHUB_ENV
+
+      - name: Build and deploy review app
+        run: |
+          echo "Deploying review app for PR #${{ github.event.number }}"
+          
+          # Create namespace
+          kubectl create namespace banking-pr-${{ github.event.number }} --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Deploy with Helm
+          helm upgrade --install banking-pr-${{ github.event.number }} ./helm/banking-app \
+            --namespace banking-pr-${{ github.event.number }} \
+            --set global.environment=review \
+            --set global.prNumber=${{ github.event.number }} \
+            --set ingress.host=banking-pr-${{ github.event.number }}.example.com \
+            --set database.enabled=true \
+            --set replicas=1 \
+            --wait --timeout=10m
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Review App Deployed!**
+              
+              **URL**: https://banking-pr-${{ github.event.number }}.example.com
+              **Environment**: review-pr-${{ github.event.number }}
+              **Branch**: ${process.env.BRANCH_NAME}
+              
+              **Test Credentials:**
+              - Username: \`john.doe\`
+              - Password: \`password\`
+              
+              The review app will be automatically destroyed when this PR is closed.`
+            })
+
+  cleanup-review:
+    name: 🧹 Cleanup Review App
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - name: Delete review environment
+        run: |
+          echo "Cleaning up review app for PR #${{ github.event.number }}"
+          
+          # Delete Helm release
+          helm uninstall banking-pr-${{ github.event.number }} \
+            --namespace banking-pr-${{ github.event.number }} || true
+          
+          # Delete namespace
+          kubectl delete namespace banking-pr-${{ github.event.number }} || true
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🧹 **Review App Cleaned Up**
+              
+              The review environment for this PR has been destroyed.`
+            })

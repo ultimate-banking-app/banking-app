@@ -1,0 +1,35 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: api-gateway
+
+services:
+  auth:
+    url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  account:
+    url: ${ACCOUNT_SERVICE_URL:http://localhost:8084}
+  payment:
+    url: ${PAYMENT_SERVICE_URL:http://localhost:8083}
+  audit:
+    url: ${AUDIT_SERVICE_URL:http://localhost:8085}
+  balance:
+    url: ${BALANCE_SERVICE_URL:http://localhost:8086}
+  deposit:
+    url: ${DEPOSIT_SERVICE_URL:http://localhost:8087}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true

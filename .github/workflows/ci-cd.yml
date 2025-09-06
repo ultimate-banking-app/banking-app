@@ -1,0 +1,402 @@
+name: 🏦 Banking Application CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  MAVEN_OPTS: -Xmx2g -XX:+UseG1GC -Dmaven.artifact.threads=10
+  NODE_VERSION: 18
+
+jobs:
+  detect-changes:
+    name: 🔍 Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      auth: ${{ steps.changes.outputs.auth }}
+      account: ${{ steps.changes.outputs.account }}
+      payment: ${{ steps.changes.outputs.payment }}
+      gateway: ${{ steps.changes.outputs.gateway }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            backend:
+              - 'auth-service/**'
+              - 'account-service/**'
+              - 'payment-service/**'
+              - 'api-gateway/**'
+              - 'shared/**'
+              - 'pom.xml'
+            frontend:
+              - 'banking-ui/**'
+            auth:
+              - 'auth-service/**'
+              - 'shared/**'
+            account:
+              - 'account-service/**'
+              - 'shared/**'
+            payment:
+              - 'payment-service/**'
+              - 'shared/**'
+            gateway:
+              - 'api-gateway/**'
+              - 'shared/**'
+
+  build-backend:
+    name: 🔨 Build Backend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: |
+          mvn clean compile -DskipTests --batch-mode --errors --fail-at-end --show-version
+          mvn package -DskipTests --batch-mode
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-artifacts
+          path: |
+            */target/*.jar
+          retention-days: 1
+
+  build-frontend:
+    name: 🎨 Build Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: banking-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: banking-ui
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Lint code
+        working-directory: banking-ui
+        run: npm run lint
+
+      - name: Build application
+        working-directory: banking-ui
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-artifacts
+          path: banking-ui/dist/
+          retention-days: 1
+
+  test-services:
+    name: 🧪 Test Services
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-backend]
+    if: needs.detect-changes.outputs.backend == 'true'
+    strategy:
+      matrix:
+        service: [auth-service, account-service, payment-service, api-gateway]
+        include:
+          - service: auth-service
+            condition: needs.detect-changes.outputs.auth == 'true'
+          - service: account-service
+            condition: needs.detect-changes.outputs.account == 'true'
+          - service: payment-service
+            condition: needs.detect-changes.outputs.payment == 'true'
+          - service: api-gateway
+            condition: needs.detect-changes.outputs.gateway == 'true'
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_DB: banking_test
+          POSTGRES_USER: banking_user
+          POSTGRES_PASSWORD: banking_pass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ matrix.condition }}
+
+      - name: Set up JDK 17
+        if: ${{ matrix.condition }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run tests
+        if: ${{ matrix.condition }}
+        working-directory: ${{ matrix.service }}
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/banking_test
+          SPRING_DATASOURCE_USERNAME: banking_user
+          SPRING_DATASOURCE_PASSWORD: banking_pass
+        run: |
+          mvn test --batch-mode
+          mvn jacoco:report
+
+      - name: Upload test results
+        if: ${{ matrix.condition }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.service }}
+          path: |
+            ${{ matrix.service }}/target/surefire-reports/
+            ${{ matrix.service }}/target/site/jacoco/
+          retention-days: 7
+
+  test-frontend:
+    name: 🧪 Test Frontend
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-frontend]
+    if: needs.detect-changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: banking-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: banking-ui
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run unit tests
+        working-directory: banking-ui
+        run: npm run test:unit -- --coverage --watchAll=false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: banking-ui/coverage/
+          retention-days: 7
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Backend security scan
+        if: needs.detect-changes.outputs.backend == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: OWASP Dependency Check
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: |
+          mvn org.owasp:dependency-check-maven:check \
+            -DfailBuildOnCVSS=7 \
+            --batch-mode
+
+      - name: Frontend security scan
+        if: needs.detect-changes.outputs.frontend == 'true'
+        working-directory: banking-ui
+        run: |
+          npm audit --audit-level=moderate
+          npx retire --js --outputformat json --outputpath retire-report.json || true
+
+  quality-gate:
+    name: 📊 Quality Gate
+    runs-on: ubuntu-latest
+    needs: [test-services, test-frontend]
+    if: always() && (needs.test-services.result == 'success' || needs.test-frontend.result == 'success')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  build-images:
+    name: 🐳 Build Images
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-backend, build-frontend, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    strategy:
+      matrix:
+        include:
+          - service: auth-service
+            condition: needs.detect-changes.outputs.auth == 'true'
+          - service: account-service
+            condition: needs.detect-changes.outputs.account == 'true'
+          - service: payment-service
+            condition: needs.detect-changes.outputs.payment == 'true'
+          - service: api-gateway
+            condition: needs.detect-changes.outputs.gateway == 'true'
+          - service: banking-ui
+            condition: needs.detect-changes.outputs.frontend == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ matrix.condition }}
+
+      - name: Download artifacts
+        if: ${{ matrix.condition }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.service == 'banking-ui' && 'frontend-artifacts' || 'backend-artifacts' }}
+
+      - name: Log in to Container Registry
+        if: ${{ matrix.condition }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        if: ${{ matrix.condition }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push Docker image
+        if: ${{ matrix.condition }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-dev:
+    name: 🚀 Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [build-images, quality-gate]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: development
+      url: https://banking-dev.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/dev/
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/account-service:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/payment-service:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api-gateway:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/banking-ui:${{ github.sha }}
+          kubectl-version: 'latest'
+
+  deploy-staging:
+    name: 🎭 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-images, quality-gate]
+    if: github.event_name == 'release' && contains(github.event.release.tag_name, 'rc')
+    environment:
+      name: staging
+      url: https://banking-staging.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/staging/
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/account-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/payment-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api-gateway:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/banking-ui:${{ github.event.release.tag_name }}
+
+  deploy-prod:
+    name: 🏭 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-images, quality-gate]
+    if: github.event_name == 'release' && !contains(github.event.release.tag_name, 'rc')
+    environment:
+      name: production
+      url: https://banking.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        uses: azure/k8s-deploy@v1
+        with:
+          manifests: |
+            k8s/prod/
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/account-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/payment-service:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api-gateway:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/banking-ui:${{ github.event.release.tag_name }}

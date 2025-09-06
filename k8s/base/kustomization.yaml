@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- secrets.yaml
+- configmap.yaml
+- postgres.yaml
+- auth-service.yaml
+- account-service.yaml
+- payment-service.yaml
+- audit-service.yaml
+- balance-service.yaml
+- api-gateway.yaml
+- banking-ui.yaml
+- ingress.yaml
+- network-policy.yaml
+- pod-disruption-budget.yaml
+
+commonLabels:
+  app: banking-app

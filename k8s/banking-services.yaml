@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: banking/auth-service:latest
+        ports:
+        - containerPort: 8081
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "k8s"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: account-service
+  template:
+    metadata:
+      labels:
+        app: account-service
+    spec:
+      containers:
+      - name: account-service
+        image: banking/account-service:latest
+        ports:
+        - containerPort: 8084
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-service
+  template:
+    metadata:
+      labels:
+        app: audit-service
+    spec:
+      containers:
+      - name: audit-service
+        image: banking/audit-service:latest
+        ports:
+        - containerPort: 8085
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: balance-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: balance-service
+  template:
+    metadata:
+      labels:
+        app: balance-service
+    spec:
+      containers:
+      - name: balance-service
+        image: banking/balance-service:latest
+        ports:
+        - containerPort: 8086
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deposit-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: deposit-service
+  template:
+    metadata:
+      labels:
+        app: deposit-service
+    spec:
+      containers:
+      - name: deposit-service
+        image: banking/deposit-service:latest
+        ports:
+        - containerPort: 8087
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+      - name: notification-service
+        image: banking/notification-service:latest
+        ports:
+        - containerPort: 8088
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transfer-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transfer-service
+  template:
+    metadata:
+      labels:
+        app: transfer-service
+    spec:
+      containers:
+      - name: transfer-service
+        image: banking/transfer-service:latest
+        ports:
+        - containerPort: 8089
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: withdrawal-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: withdrawal-service
+  template:
+    metadata:
+      labels:
+        app: withdrawal-service
+    spec:
+      containers:
+      - name: withdrawal-service
+        image: banking/withdrawal-service:latest
+        ports:
+        - containerPort: 8091
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: banking/api-gateway:latest
+        ports:
+        - containerPort: 8090

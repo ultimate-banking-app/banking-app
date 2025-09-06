@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: banking-ui
+  labels:
+    app: banking-ui
+    component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: banking-ui
+  template:
+    metadata:
+      labels:
+        app: banking-ui
+        component: frontend
+    spec:
+      containers:
+      - name: banking-ui
+        image: banking/banking-ui:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: API_GATEWAY_URL
+          value: "http://api-gateway:8090"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: banking-ui
+  labels:
+    app: banking-ui
+spec:
+  selector:
+    app: banking-ui
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP

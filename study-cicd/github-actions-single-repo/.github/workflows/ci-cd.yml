@@ -1,0 +1,325 @@
+name: 🏦 Banking App CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  MAVEN_OPTS: -Xmx2g -XX:+UseG1GC
+  NODE_VERSION: 18
+
+jobs:
+  build-backend:
+    name: 🔨 Build Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build backend services
+        run: |
+          echo "🔨 Building backend services..."
+          mvn clean compile -DskipTests --batch-mode
+          mvn package -DskipTests --batch-mode
+
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jars
+          path: |
+            */target/*.jar
+          retention-days: 1
+
+  build-frontend:
+    name: 🎨 Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: banking-ui/package-lock.json
+
+      - name: Build frontend
+        working-directory: banking-ui
+        run: |
+          echo "🎨 Building frontend application..."
+          npm ci --prefer-offline --no-audit
+          npm run build
+
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: banking-ui/dist/
+          retention-days: 1
+
+  test-backend:
+    name: 🧪 Test Backend
+    runs-on: ubuntu-latest
+    needs: build-backend
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_DB: banking_test
+          POSTGRES_USER: banking_user
+          POSTGRES_PASSWORD: banking_pass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run backend tests
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/banking_test
+          SPRING_DATASOURCE_USERNAME: banking_user
+          SPRING_DATASOURCE_PASSWORD: banking_pass
+        run: |
+          echo "🧪 Running backend tests..."
+          mvn test --batch-mode
+          mvn jacoco:report
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: |
+            */target/surefire-reports/
+            */target/site/jacoco/
+          retention-days: 7
+
+  test-frontend:
+    name: 🧪 Test Frontend
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: banking-ui/package-lock.json
+
+      - name: Run frontend tests
+        working-directory: banking-ui
+        run: |
+          echo "🧪 Running frontend tests..."
+          npm ci --prefer-offline --no-audit
+          npm test -- --coverage --watchAll=false
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-test-results
+          path: banking-ui/coverage/
+          retention-days: 7
+
+  quality-gate:
+    name: 📊 Quality Gate
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: OWASP Dependency Check
+        run: |
+          echo "🔒 Running OWASP dependency check..."
+          mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7 --batch-mode
+
+      - name: Setup Node.js for security scan
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: banking-ui/package-lock.json
+
+      - name: NPM Security Audit
+        working-directory: banking-ui
+        run: |
+          echo "🔒 Running NPM security audit..."
+          npm ci --prefer-offline --no-audit
+          npm audit --audit-level=moderate
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            target/dependency-check-report.html
+          retention-days: 7
+
+  build-images:
+    name: 🐳 Build Images
+    runs-on: ubuntu-latest
+    needs: [quality-gate, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    strategy:
+      matrix:
+        service: [auth-service, account-service, payment-service, api-gateway, banking-ui]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.service == 'banking-ui' && 'frontend-dist' || 'backend-jars' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-dev:
+    name: 🚀 Deploy to Development
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: development
+      url: https://banking-dev.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to development environment..."
+          helm upgrade --install banking-dev ./helm/banking-app \
+            --namespace banking-dev \
+            --create-namespace \
+            --set global.environment=dev \
+            --set global.imageTag=${{ github.sha }} \
+            --wait --timeout=10m
+
+  deploy-staging:
+    name: 🎭 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.event_name == 'release' && contains(github.event.release.tag_name, 'rc')
+    environment:
+      name: staging
+      url: https://banking-staging.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to staging environment..."
+          helm upgrade --install banking-staging ./helm/banking-app \
+            --namespace banking-staging \
+            --create-namespace \
+            --set global.environment=staging \
+            --set global.imageTag=${{ github.event.release.tag_name }} \
+            --wait --timeout=15m
+
+  deploy-prod:
+    name: 🏭 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.event_name == 'release' && !contains(github.event.release.tag_name, 'rc')
+    environment:
+      name: production
+      url: https://banking.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying to production environment..."
+          helm upgrade --install banking-prod ./helm/banking-app \
+            --namespace banking-prod \
+            --create-namespace \
+            --set global.environment=prod \
+            --set global.imageTag=${{ github.event.release.tag_name }} \
+            --set replicas.auth=3 \
+            --set replicas.account=3 \
+            --set replicas.payment=3 \
+            --wait --timeout=20m

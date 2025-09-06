@@ -1,45 +1,36 @@
 package com.banking.notification.controller;
 
+import com.banking.notification.entity.Notification;
+import com.banking.notification.service.NotificationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.HashMap;
-import java.util.Map;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/notifications")
+@CrossOrigin(origins = "*")
 public class NotificationController {
 
-    @PostMapping("/sms")
-    public Map<String, Object> sendSMS(@RequestParam String phoneNumber,
-                                     @RequestParam String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("notificationId", "SMS" + System.currentTimeMillis());
-        response.put("status", "SENT");
-        response.put("type", "SMS");
-        response.put("phoneNumber", phoneNumber);
-        return response;
+    @Autowired
+    private NotificationService notificationService;
+
+    @PostMapping
+    public ResponseEntity<Notification> sendNotification(@RequestBody Notification notification) {
+        Notification sent = notificationService.sendNotification(notification);
+        return ResponseEntity.ok(sent);
     }
 
-    @PostMapping("/email")
-    public Map<String, Object> sendEmail(@RequestParam String email,
-                                       @RequestParam String subject,
-                                       @RequestParam String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("notificationId", "EMAIL" + System.currentTimeMillis());
-        response.put("status", "SENT");
-        response.put("type", "EMAIL");
-        response.put("email", email);
-        return response;
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<Notification>> getNotificationsByUserId(@PathVariable String userId) {
+        List<Notification> notifications = notificationService.getNotificationsByUserId(userId);
+        return ResponseEntity.ok(notifications);
     }
 
-    @PostMapping("/push")
-    public Map<String, Object> sendPushNotification(@RequestParam String userId,
-                                                  @RequestParam String title,
-                                                  @RequestParam String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("notificationId", "PUSH" + System.currentTimeMillis());
-        response.put("status", "SENT");
-        response.put("type", "PUSH");
-        response.put("userId", userId);
-        return response;
+    @GetMapping
+    public ResponseEntity<List<Notification>> getAllNotifications() {
+        List<Notification> notifications = notificationService.getAllNotifications();
+        return ResponseEntity.ok(notifications);
     }
 }

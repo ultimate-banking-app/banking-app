@@ -1,0 +1,31 @@
+global:
+  environment: dev
+  imageTag: latest
+  registry: registry.gitlab.com/your-group/banking-app
+
+authService:
+  replicas: 2
+  port: 8081
+
+accountService:
+  replicas: 2
+  port: 8084
+
+paymentService:
+  replicas: 2
+  port: 8083
+
+apiGateway:
+  replicas: 1
+  port: 8090
+
+bankingUI:
+  replicas: 1
+  port: 80
+
+database:
+  enabled: true
+
+ingress:
+  enabled: true
+  host: banking.example.com

@@ -1,0 +1,5 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Transfer Service,com.banking.transfer.controller,TransferController,77,0,0,0,17,0,3,0,3,0
+Transfer Service,com.banking.transfer,TransferServiceApplication,8,0,0,0,3,0,2,0,2,0
+Transfer Service,com.banking.transfer.entity,Transfer,48,37,0,0,14,12,14,7,14,7
+Transfer Service,com.banking.transfer.service,TransferService,5,25,1,1,1,6,2,4,1,4

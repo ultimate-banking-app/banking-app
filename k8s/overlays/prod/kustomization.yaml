@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: banking-prod
+
+resources:
+- ../../base
+
+namePrefix: prod-
+
+commonLabels:
+  environment: prod
+  version: v1.0.0
+
+images:
+- name: banking/auth-service
+  newTag: v1.0.0
+- name: banking/account-service
+  newTag: v1.0.0
+- name: banking/payment-service
+  newTag: v1.0.0
+- name: banking/api-gateway
+  newTag: v1.0.0
+- name: banking/banking-ui
+  newTag: v1.0.0
+
+patchesStrategicMerge:
+- replica-patch.yaml
+- resource-patch.yaml
+
+patches:
+- target:
+    kind: Ingress
+    name: banking-ingress
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: banking.example.com
+    - op: add
+      path: /spec/tls
+      value:
+      - hosts:
+        - banking.example.com
+        secretName: banking-tls

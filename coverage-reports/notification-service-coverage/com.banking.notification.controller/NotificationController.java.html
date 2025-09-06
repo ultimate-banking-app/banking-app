@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NotificationController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Notification Service</a> &gt; <a href="index.source.html" class="el_package">com.banking.notification.controller</a> &gt; <span class="el_source">NotificationController.java</span></div><h1>NotificationController.java</h1><pre class="source lang-java linenums">package com.banking.notification.controller;
+
+import com.banking.notification.entity.Notification;
+import com.banking.notification.service.NotificationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping(&quot;/api/notifications&quot;)
+@CrossOrigin(origins = &quot;*&quot;)
+<span class="nc" id="L14">public class NotificationController {</span>
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @PostMapping
+    public ResponseEntity&lt;Notification&gt; sendNotification(@RequestBody Notification notification) {
+<span class="nc" id="L21">        Notification sent = notificationService.sendNotification(notification);</span>
+<span class="nc" id="L22">        return ResponseEntity.ok(sent);</span>
+    }
+
+    @GetMapping(&quot;/user/{userId}&quot;)
+    public ResponseEntity&lt;List&lt;Notification&gt;&gt; getNotificationsByUserId(@PathVariable String userId) {
+<span class="nc" id="L27">        List&lt;Notification&gt; notifications = notificationService.getNotificationsByUserId(userId);</span>
+<span class="nc" id="L28">        return ResponseEntity.ok(notifications);</span>
+    }
+
+    @GetMapping
+    public ResponseEntity&lt;List&lt;Notification&gt;&gt; getAllNotifications() {
+<span class="nc" id="L33">        List&lt;Notification&gt; notifications = notificationService.getAllNotifications();</span>
+<span class="nc" id="L34">        return ResponseEntity.ok(notifications);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

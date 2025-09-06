@@ -1,44 +1,48 @@
 package com.banking.account.service;
 
-import com.banking.shared.entity.Account;
-import com.banking.shared.enums.AccountStatus;
-import com.banking.shared.enums.AccountType;
+import com.banking.account.entity.Account;
+import com.banking.account.entity.Transaction;
+import com.banking.account.repository.AccountRepository;
+import com.banking.account.repository.TransactionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.*;
-import java.util.stream.Collectors;
+
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class AccountService {
-    
-    private Map<String, Account> accounts = new HashMap<>();
 
-    public Account createAccount(String userId, AccountType accountType, String currency) {
-        Account account = new Account(userId, accountType, currency);
-        account.setId(UUID.randomUUID().toString());
-        account.setAccountNumber(generateAccountNumber());
-        accounts.put(account.getId(), account);
-        return account;
+    @Autowired
+    private AccountRepository accountRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
+
+    public List<Account> getAllAccounts() {
+        return accountRepository.findAll();
     }
 
-    public Account getAccountById(String accountId) {
-        return accounts.get(accountId);
+    public Account getAccountById(String id) {
+        return accountRepository.findById(id).orElse(null);
     }
 
     public List<Account> getAccountsByUserId(String userId) {
-        return accounts.values().stream()
-                .filter(account -> account.getUserId().equals(userId))
-                .collect(Collectors.toList());
+        return accountRepository.findByUserId(userId);
     }
 
-    public Account updateAccountStatus(String accountId, String status) {
-        Account account = accounts.get(accountId);
-        if (account != null) {
-            account.setStatus(AccountStatus.valueOf(status));
+    public List<Transaction> getAllTransactions() {
+        return transactionRepository.findAll();
+    }
+
+    public List<Transaction> getTransactionsByAccountId(String accountId) {
+        return transactionRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
+    }
+
+    public Account createAccount(Account account) {
+        if (account.getId() == null) {
+            account.setId(UUID.randomUUID().toString());
         }
-        return account;
-    }
-
-    private String generateAccountNumber() {
-        return "ACC" + System.currentTimeMillis();
+        return accountRepository.save(account);
     }
 }

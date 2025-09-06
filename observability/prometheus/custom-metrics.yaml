@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: observability
+data:
+  banking-rules.yml: |
+    groups:
+    - name: banking.business.metrics
+      interval: 30s
+      rules:
+      - record: banking:transaction_rate_5m
+        expr: rate(banking_transactions_total[5m])
+      - record: banking:transaction_success_rate_5m
+        expr: rate(banking_transactions_total{status="success"}[5m]) / rate(banking_transactions_total[5m])
+      - record: banking:account_balance_total
+        expr: sum(banking_account_balance) by (account_type)
+      - record: banking:payment_volume_5m
+        expr: sum(rate(banking_payment_amount_total[5m])) by (payment_type)
+      - record: banking:login_success_rate_5m
+        expr: rate(banking_login_attempts_total{status="success"}[5m]) / rate(banking_login_attempts_total[5m])
+      - record: banking:api_error_rate_5m
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])
+      
+    - name: banking.alerts
+      rules:
+      - alert: HighTransactionFailureRate
+        expr: banking:transaction_success_rate_5m < 0.95
+        for: 2m
+        labels:
+          severity: warning
+          service: banking
+        annotations:
+          summary: "High transaction failure rate detected"
+          description: "Transaction success rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+      
+      - alert: LowAccountBalance
+        expr: banking_account_balance < 100
+        for: 1m
+        labels:
+          severity: critical
+          service: banking
+        annotations:
+          summary: "Account balance critically low"
+          description: "Account {{ $labels.account_id }} has balance of ${{ $value }}"
+      
+      - alert: HighLoginFailureRate
+        expr: banking:login_success_rate_5m < 0.90
+        for: 5m
+        labels:
+          severity: warning
+          service: banking
+        annotations:
+          summary: "High login failure rate"
+          description: "Login success rate is {{ $value | humanizePercentage }}"
+      
+      - alert: ServiceDown
+        expr: up{job="banking-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: banking
+        annotations:
+          summary: "Banking service is down"
+          description: "Service {{ $labels.kubernetes_name }} has been down for more than 1 minute"
+      
+      - alert: HighAPIErrorRate
+        expr: banking:api_error_rate_5m > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: banking
+        annotations:
+          summary: "High API error rate"
+          description: "API error rate is {{ $value | humanizePercentage }} for service {{ $labels.kubernetes_name }}"

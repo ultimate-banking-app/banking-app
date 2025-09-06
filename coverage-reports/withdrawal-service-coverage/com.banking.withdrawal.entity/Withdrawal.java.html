@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Withdrawal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Withdrawal Service</a> &gt; <a href="index.source.html" class="el_package">com.banking.withdrawal.entity</a> &gt; <span class="el_source">Withdrawal.java</span></div><h1>Withdrawal.java</h1><pre class="source lang-java linenums">package com.banking.withdrawal.entity;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = &quot;withdrawals&quot;)
+public class Withdrawal {
+    @Id
+    private String id;
+    
+    @Column(name = &quot;account_id&quot;)
+    private String accountId;
+    
+    @Column(name = &quot;amount&quot;)
+    private BigDecimal amount;
+    
+<span class="fc" id="L19">    @Column(name = &quot;currency&quot;)</span>
+    private String currency = &quot;USD&quot;;
+    
+<span class="fc" id="L22">    @Column(name = &quot;withdrawal_method&quot;)</span>
+    private String withdrawalMethod = &quot;WEB&quot;;
+    
+    @Column(name = &quot;reference_number&quot;)
+    private String referenceNumber;
+    
+<span class="fc" id="L28">    @Column(name = &quot;status&quot;)</span>
+    private String status = &quot;COMPLETED&quot;;
+    
+    @Column(name = &quot;description&quot;)
+    private String description;
+    
+    @Column(name = &quot;created_at&quot;)
+    private LocalDateTime createdAt;
+
+<span class="fc" id="L37">    public Withdrawal() {</span>
+<span class="fc" id="L38">        this.createdAt = LocalDateTime.now();</span>
+<span class="fc" id="L39">    }</span>
+
+    // Getters and Setters
+<span class="fc" id="L42">    public String getId() { return id; }</span>
+<span class="fc" id="L43">    public void setId(String id) { this.id = id; }</span>
+
+<span class="fc" id="L45">    public String getAccountId() { return accountId; }</span>
+<span class="fc" id="L46">    public void setAccountId(String accountId) { this.accountId = accountId; }</span>
+
+<span class="nc" id="L48">    public BigDecimal getAmount() { return amount; }</span>
+<span class="fc" id="L49">    public void setAmount(BigDecimal amount) { this.amount = amount; }</span>
+
+<span class="nc" id="L51">    public String getCurrency() { return currency; }</span>
+<span class="nc" id="L52">    public void setCurrency(String currency) { this.currency = currency; }</span>
+
+<span class="nc" id="L54">    public String getWithdrawalMethod() { return withdrawalMethod; }</span>
+<span class="fc" id="L55">    public void setWithdrawalMethod(String withdrawalMethod) { this.withdrawalMethod = withdrawalMethod; }</span>
+
+<span class="nc" id="L57">    public String getReferenceNumber() { return referenceNumber; }</span>
+<span class="nc" id="L58">    public void setReferenceNumber(String referenceNumber) { this.referenceNumber = referenceNumber; }</span>
+
+<span class="nc" id="L60">    public String getStatus() { return status; }</span>
+<span class="nc" id="L61">    public void setStatus(String status) { this.status = status; }</span>
+
+<span class="nc" id="L63">    public String getDescription() { return description; }</span>
+<span class="nc" id="L64">    public void setDescription(String description) { this.description = description; }</span>
+
+<span class="nc" id="L66">    public LocalDateTime getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L67">    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

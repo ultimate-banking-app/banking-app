@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: banking
+  namespace: argocd
+spec:
+  description: Banking Application Project
+  sourceRepos:
+  - 'https://github.com/your-org/banking-app.git'
+  - 'https://gitlab.com/your-org/banking-app.git'
+  destinations:
+  - namespace: banking-dev
+    server: https://kubernetes.default.svc
+  - namespace: banking-staging
+    server: https://kubernetes.default.svc
+  - namespace: banking-prod
+    server: https://kubernetes.default.svc
+  - namespace: observability
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: rbac.authorization.k8s.io
+    kind: ClusterRole
+  - group: rbac.authorization.k8s.io
+    kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: ConfigMap
+  - group: ''
+    kind: Secret
+  - group: ''
+    kind: Service
+  - group: ''
+    kind: ServiceAccount
+  - group: apps
+    kind: Deployment
+  - group: apps
+    kind: StatefulSet
+  - group: apps
+    kind: DaemonSet
+  - group: networking.k8s.io
+    kind: Ingress
+  - group: networking.k8s.io
+    kind: NetworkPolicy
+  roles:
+  - name: banking-admin
+    description: Admin access to banking applications
+    policies:
+    - p, proj:banking:banking-admin, applications, *, banking/*, allow
+    - p, proj:banking:banking-admin, repositories, *, banking/*, allow
+    groups:
+    - banking-team
+  - name: banking-developer
+    description: Developer access to banking applications
+    policies:
+    - p, proj:banking:banking-developer, applications, get, banking/*, allow
+    - p, proj:banking:banking-developer, applications, sync, banking/*, allow
+    groups:
+    - banking-developers

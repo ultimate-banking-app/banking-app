@@ -1,43 +1,53 @@
 package com.banking.audit.controller;
 
+import com.banking.audit.entity.AuditLog;
+import com.banking.audit.service.AuditService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.HashMap;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/audit")
+@CrossOrigin(origins = "*")
 public class AuditController {
 
-    @GetMapping("/transactions/{accountId}")
-    public Map<String, Object> getTransactionHistory(@PathVariable String accountId,
-                                                   @RequestParam(defaultValue = "30") int days) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("accountId", accountId);
-        response.put("period", days + " days");
-        response.put("totalTransactions", 0);
-        response.put("transactions", new Object[]{});
-        return response;
+    @Autowired
+    private AuditService auditService;
+    
+    private final Counter auditRequestsCounter;
+
+    public AuditController(MeterRegistry meterRegistry) {
+        this.auditRequestsCounter = Counter.builder("banking_audit_requests_total")
+            .description("Total audit requests")
+            .tag("service", "audit")
+            .register(meterRegistry);
     }
 
     @PostMapping("/log")
-    public Map<String, Object> logTransaction(@RequestParam String transactionId,
-                                            @RequestParam String type,
-                                            @RequestParam String details) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("auditId", "AUDIT" + System.currentTimeMillis());
-        response.put("status", "LOGGED");
-        response.put("transactionId", transactionId);
-        response.put("type", type);
-        return response;
+    public ResponseEntity<AuditLog> createAuditLog(@RequestBody AuditLog auditLog) {
+        auditRequestsCounter.increment();
+        AuditLog saved = auditService.createAuditLog(auditLog);
+        return ResponseEntity.ok(saved);
     }
 
-    @GetMapping("/compliance/{accountId}")
-    public Map<String, Object> getComplianceReport(@PathVariable String accountId) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("accountId", accountId);
-        response.put("complianceStatus", "COMPLIANT");
-        response.put("lastReviewDate", "2024-01-01");
-        response.put("nextReviewDate", "2024-07-01");
-        return response;
+    @GetMapping("/logs")
+    public ResponseEntity<Page<AuditLog>> getAuditLogs(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String action,
+            Pageable pageable) {
+        auditRequestsCounter.increment();
+        Page<AuditLog> logs = auditService.getAuditLogs(userId, action, pageable);
+        return ResponseEntity.ok(logs);
+    }
+
+    @GetMapping("/logs/{id}")
+    public ResponseEntity<AuditLog> getAuditLog(@PathVariable String id) {
+        auditRequestsCounter.increment();
+        AuditLog log = auditService.getAuditLog(id);
+        return ResponseEntity.ok(log);
     }
 }

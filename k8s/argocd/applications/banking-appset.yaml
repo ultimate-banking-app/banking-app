@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: banking-environments
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - environment: dev
+        targetRevision: main
+        namespace: banking-dev
+        automated: true
+      - environment: staging
+        targetRevision: main
+        namespace: banking-staging
+        automated: false
+      - environment: prod
+        targetRevision: v1.0.0
+        namespace: banking-prod
+        automated: false
+  template:
+    metadata:
+      name: 'banking-{{environment}}'
+      labels:
+        app: banking
+        environment: '{{environment}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: banking
+      source:
+        repoURL: https://github.com/your-org/banking-app.git
+        targetRevision: '{{targetRevision}}'
+        path: 'k8s/overlays/{{environment}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: '{{automated}}'
+          selfHeal: '{{automated}}'
+          allowEmpty: false
+        syncOptions:
+        - CreateNamespace=true
+        - PrunePropagationPolicy=foreground
+        - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10

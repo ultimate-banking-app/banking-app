@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: banking-config
+  namespace: banking-app
+data:
+  database.url: "jdbc:postgresql://banking-db.banking-app.svc.cluster.local:5432/banking"
+  database.username: "banking"
+  redis.host: "banking-redis.banking-app.svc.cluster.local"
+  redis.port: "6379"
+  logging.level: "INFO"
+  management.endpoints.web.exposure.include: "health,info,metrics,prometheus"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: banking-secrets
+  namespace: banking-app
+type: Opaque
+data:
+  database.password: YmFua2luZzEyMw==  # banking123 base64 encoded
+  jwt.secret: c2VjcmV0a2V5MTIz  # secretkey123 base64 encoded

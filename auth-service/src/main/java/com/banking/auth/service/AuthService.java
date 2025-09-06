@@ -1,43 +1,52 @@
 package com.banking.auth.service;
 
-import com.banking.auth.dto.LoginRequest;
-import com.banking.auth.dto.RegisterRequest;
+import com.banking.auth.entity.User;
+import com.banking.auth.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import java.util.HashMap;
-import java.util.Map;
+
+import java.util.Base64;
+import java.util.Optional;
 
 @Service
 public class AuthService {
-    
-    private Map<String, Object> users = new HashMap<>();
 
-    public Map<String, Object> register(RegisterRequest request) {
-        Map<String, Object> user = new HashMap<>();
-        user.put("id", System.currentTimeMillis());
-        user.put("email", request.getEmail());
-        user.put("firstName", request.getFirstName());
-        user.put("lastName", request.getLastName());
-        user.put("phoneNumber", request.getPhoneNumber());
+    @Autowired
+    private UserRepository userRepository;
+
+    public User authenticate(String username, String password) {
+        Optional<User> userOpt = userRepository.findByUsername(username);
         
-        users.put(request.getEmail(), user);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            if ("password".equals(password)) {
+                return user;
+            }
+        }
         
-        Map<String, Object> response = new HashMap<>();
-        response.put("token", "jwt-token-" + System.currentTimeMillis());
-        response.put("user", user);
-        return response;
+        throw new RuntimeException("Invalid credentials");
     }
 
-    public Map<String, Object> login(LoginRequest request) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("token", "jwt-token-" + System.currentTimeMillis());
-        response.put("user", users.get(request.getEmail()));
-        return response;
+    public String generateToken(User user) {
+        String tokenData = user.getId() + ":" + user.getUsername() + ":" + System.currentTimeMillis();
+        return Base64.getEncoder().encodeToString(tokenData.getBytes());
     }
 
-    public Map<String, Object> verifyToken(String token) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("valid", true);
-        response.put("userId", "user-123");
-        return response;
+    public User validateToken(String token) {
+        try {
+            String decoded = new String(Base64.getDecoder().decode(token));
+            String[] parts = decoded.split(":");
+            if (parts.length >= 2) {
+                String userId = parts[0];
+                Optional<User> userOpt = userRepository.findById(userId);
+                if (userOpt.isPresent()) {
+                    return userOpt.get();
+                }
+            }
+        } catch (Exception e) {
+            // Token validation failed
+        }
+        
+        throw new RuntimeException("Invalid token");
     }
 }

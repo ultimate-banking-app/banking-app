@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: banking-dev
+
+resources:
+- ../../base
+
+namePrefix: dev-
+
+commonLabels:
+  environment: dev
+  version: v1.0.0
+
+images:
+- name: banking/auth-service
+  newTag: dev-latest
+- name: banking/account-service
+  newTag: dev-latest
+- name: banking/payment-service
+  newTag: dev-latest
+- name: banking/api-gateway
+  newTag: dev-latest
+- name: banking/banking-ui
+  newTag: dev-latest
+
+patchesStrategicMerge:
+- replica-patch.yaml
+- resource-patch.yaml
+
+patches:
+- target:
+    kind: Ingress
+    name: banking-ingress
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: banking-dev.local
